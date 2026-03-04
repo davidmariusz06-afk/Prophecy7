@@ -1,6 +1,6 @@
 // The Prophecy — Service Worker
 // Bump CACHE_VERSION whenever you deploy an update
-const CACHE_VERSION = 'prophecy-v3';
+const CACHE_VERSION = 'prophecy-v4';
 
 const STATIC_ASSETS = [
   './',
@@ -70,4 +70,34 @@ self.addEventListener('fetch', event => {
         });
       })
   );
+});
+
+// ── WEIGH-IN REMINDER (message from app) ──────────────────
+self.addEventListener('message', event => {
+  if (event.data?.type !== 'SCHEDULE_REMINDER') return;
+  const { enabled, time } = event.data;
+  // Store reminder config in cache for background sync
+  caches.open(CACHE_VERSION).then(cache => {
+    cache.put('/_reminder_config', new Response(JSON.stringify({ enabled, time })));
+  });
+});
+
+// Daily reminder via periodic background sync (if supported)
+self.addEventListener('periodicsync', event => {
+  if (event.tag !== 'weigh-in-reminder') return;
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_VERSION);
+    const cfg = await cache.match('/_reminder_config');
+    if (!cfg) return;
+    const { enabled, time } = await cfg.json();
+    if (!enabled) return;
+    const [h, m] = (time || '07:00').split(':').map(Number);
+    const now = new Date();
+    if (now.getHours() === h && now.getMinutes() >= m && now.getMinutes() < m + 30) {
+      self.registration.showNotification('The Prophecy ⚖️', {
+        body: "Time to weigh in! Keep your streak alive.",
+        icon: '/icons/icon-192.png', badge: '/icons/icon-72.png', tag: 'weigh-in',
+      });
+    }
+  })());
 });
