@@ -1,5 +1,5 @@
 // The Prophecy — Service Worker
-const CACHE_VERSION = 'prophecy-v14';
+const CACHE_VERSION = 'prophecy-v15';
 const STATIC_ASSETS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
