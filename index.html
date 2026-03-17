@@ -4594,6 +4594,7 @@ function setCustomBlockColor(userId, name, color) {
   else { existing.push({ name, color }); }
   try { localStorage.setItem('prophecy_custom_blocks_' + userId, JSON.stringify(existing)); } catch(e) {}
 }
+window.setCustomBlockColor = setCustomBlockColor;
 function buildBlockOptions(userId, selected) {
   const presetHTML = PRESET_BLOCKS.map(b =>
     `<option value="${b}" ${selected===b?'selected':''}>${b}</option>`
@@ -4616,6 +4617,7 @@ function removeCustomBlock(userId, name) {
   const updated = existing.filter(b => b.name !== name);
   try { localStorage.setItem('prophecy_custom_blocks_' + userId, JSON.stringify(updated)); } catch(e) {}
 }
+window.removeCustomBlock = removeCustomBlock;
 
 // Open the block picker in its own overlay (not confirmDialog, so session forms stay intact)
 function openBlockPicker(userId, initialColor, onConfirm) {
@@ -4629,9 +4631,7 @@ function openBlockPicker(userId, initialColor, onConfirm) {
   const swatchHTML = SWATCHES.map(c =>
     `<div class="cb-swatch" data-c="${c}"
       style="width:26px;height:26px;border-radius:5px;background:${c};cursor:pointer;flex-shrink:0;
-             box-sizing:border-box;border:2px solid ${c===pickedColor?'#fff':'transparent'}"
-      onclick="this.closest('.bp-box').querySelectorAll('.cb-swatch').forEach(s=>s.style.border='2px solid transparent');
-               this.style.border='2px solid #fff'; window._bpColor='${c}';"></div>`
+             box-sizing:border-box;border:2px solid ${c===pickedColor?'#fff':'transparent'}""></div>`
   ).join('');
 
   overlay.style.display = 'flex';
@@ -4647,7 +4647,7 @@ function openBlockPicker(userId, initialColor, onConfirm) {
       <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
         <input type="color" id="bp-color-native" value="${pickedColor}"
           style="width:36px;height:28px;border:none;background:transparent;cursor:pointer"
-          oninput="window._bpColor=this.value">
+>
         <span style="font-size:11px;color:#555">or pick any color</span>
       </div>
     </div>
@@ -4659,45 +4659,86 @@ function openBlockPicker(userId, initialColor, onConfirm) {
 
   window._bpColor = pickedColor; // shared via window so inline onclick can write it
 
-  overlay.querySelector('#bp-cancel').onclick = () => { overlay.style.display = 'none'; };
-  overlay.querySelector('#bp-save').onclick = () => {
+  overlay.querySelector('#bp-cancel').addEventListener('click', () => { overlay.style.display = 'none'; });
+  overlay.querySelector('#bp-save').addEventListener('click', () => {
     const name = overlay.querySelector('#bp-name').value.trim();
     const color = window._bpColor || pickedColor;
     if (!name) { overlay.querySelector('#bp-name').focus(); return; }
     overlay.style.display = 'none';
     onConfirm(name, color);
-  };
+  });
+  overlay.querySelector('#bp-color-native').addEventListener('input', function() {
+    window._bpColor = this.value;
+    overlay.querySelectorAll('.cb-swatch').forEach(s => s.style.border = '2px solid transparent');
+  });
+  overlay.querySelectorAll('.cb-swatch').forEach(swatch => {
+    swatch.addEventListener('click', function() {
+      window._bpColor = this.dataset.c;
+      overlay.querySelectorAll('.cb-swatch').forEach(s => s.style.border = '2px solid transparent');
+      this.style.border = '2px solid #fff';
+      const np = overlay.querySelector('#bp-color-native');
+      if (np) np.value = this.dataset.c;
+    });
+  });
 }
 
 // Manage panel: list custom blocks with color swatch edit + delete
-window.showManageBlocks = function(userId, afterEl) {
+window.showManageBlocks = function(userId) {
   const overlay = document.getElementById('blockPickerDialog');
   if (!overlay) return;
-  const renderPanel = () => {
+
+  const render = () => {
     const customs = getCustomBlocks(userId);
-    const SWATCHES = ['#ff6b2b','#ffe040','#69ff47','#00e5ff','#c77dff','#ff4d8d',
-                      '#a855f7','#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6'];
     overlay.style.display = 'flex';
-    overlay.innerHTML = `<div class="bp-box confirm-box" style="max-width:360px;text-align:left">
-      <h3 style="color:var(--yellow);margin-bottom:14px">Manage Custom Blocks</h3>
-      ${!customs.length ? '<div style="color:#555;font-size:13px;padding:12px 0">No custom blocks yet.</div>' :
-        customs.map(b => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <div style="width:16px;height:16px;border-radius:3px;background:${b.color||'#a855f7'};flex-shrink:0"></div>
-          <span style="flex:1;font-size:13px;color:var(--text)">${b.name}</span>
-          <input type="color" value="${b.color||'#a855f7'}"
-            style="width:30px;height:22px;border:none;background:transparent;cursor:pointer;padding:0"
-            title="Change color"
-            oninput="setCustomBlockColor('${userId}','${b.name}',this.value);this.previousElementSibling.previousElementSibling.style.background=this.value">
-          <button class="entry-del" title="Remove block"
-            onclick="removeCustomBlock('${userId}','${b.name}');window.showManageBlocks('${userId}')">✕</button>
-        </div>`).join('')
-      }
+    overlay.innerHTML = `<div class="bp-box confirm-box" style="max-width:380px;text-align:left">
+      <h3 style="color:var(--yellow);margin-bottom:14px">⚙ Manage Custom Blocks</h3>
+      <div id="bp-manage-list">
+        ${!customs.length
+          ? '<div style="color:#555;font-size:13px;padding:8px 0">No custom blocks saved yet.</div>'
+          : customs.map((b,i) => `
+            <div class="bp-manage-row" data-idx="${i}"
+              style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 10px;
+                     border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+              <div class="bp-swatch-dot" style="width:18px;height:18px;border-radius:4px;background:${b.color||'#a855f7'};flex-shrink:0"></div>
+              <span style="flex:1;font-size:13px;color:var(--text)">${b.name}</span>
+              <input type="color" class="bp-color-input" data-name="${b.name}" value="${b.color||'#a855f7'}"
+                style="width:32px;height:24px;border:none;background:transparent;cursor:pointer;padding:0"
+                title="Change color">
+              <button class="bp-del-btn entry-del" data-name="${b.name}" title="Delete block">✕</button>
+            </div>`).join('')
+        }
+      </div>
       <div class="confirm-btns" style="margin-top:16px">
-        <button class="btn btn-ghost" onclick="document.getElementById('blockPickerDialog').style.display='none'">Done</button>
+        <button class="btn btn-ghost" id="bp-done-btn">Done</button>
       </div>
     </div>`;
+
+    // Wire up all buttons via addEventListener — no inline handlers, no scope issues
+    overlay.querySelector('#bp-done-btn').addEventListener('click', () => {
+      overlay.style.display = 'none';
+    });
+
+    overlay.querySelectorAll('.bp-color-input').forEach(input => {
+      input.addEventListener('input', () => {
+        const name = input.dataset.name;
+        const color = input.value;
+        setCustomBlockColor(userId, name, color);
+        // Update the swatch dot next to this input
+        const row = input.closest('.bp-manage-row');
+        if (row) row.querySelector('.bp-swatch-dot').style.background = color;
+      });
+    });
+
+    overlay.querySelectorAll('.bp-del-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = btn.dataset.name;
+        removeCustomBlock(userId, name);
+        render(); // re-render the panel in place
+      });
+    });
   };
-  renderPanel();
+
+  render();
 };
 
 window.handleBlockSelect = function(selectEl, userId, onSave) {
